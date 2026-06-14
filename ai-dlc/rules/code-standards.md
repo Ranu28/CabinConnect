@@ -15,6 +15,7 @@
 ### Backend (.NET)
 - Minimal API or Controller-based — pick one per service, do not mix
 - Use repository pattern for data access; no raw SQL in controllers
+- **Npgsql + Dapper array parameters:** use `= ANY(@Param)` — never `IN @Param`. Dapper's `IN` expansion is SQL Server–style and produces `IN $1` under Npgsql, which is a PostgreSQL syntax error (42601) at runtime. `= ANY(@Param)` works natively with PostgreSQL array types and is the correct idiom.
 - DTOs at API boundaries; domain models stay internal
 - Async/await throughout — no `.Result` or `.Wait()`
 - Use `BadRequest(ModelState)` for model validation errors in controllers — **not** `ValidationProblem(ModelState)`; `ValidationProblem` requires `ProblemDetailsFactory` which is unavailable outside the ASP.NET Core pipeline and silently returns a null status code in unit tests
