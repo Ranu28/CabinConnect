@@ -57,6 +57,7 @@ node_modules/
 # Build output
 dist/
 build/
+!ai-dlc/ops/build/
 .next/
 .nuxt/
 .cache/
