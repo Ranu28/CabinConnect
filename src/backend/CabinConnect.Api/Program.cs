@@ -7,6 +7,7 @@ using CabinConnect.Infrastructure.Holds;
 using CabinConnect.Infrastructure.Search;
 using Dapper;
 using DotNetEnv;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Npgsql;
 
 // Load .env.local (gitignored) before the host reads configuration.
@@ -33,9 +34,23 @@ builder.Services.AddSingleton(_ =>
             "ConnectionStrings__Supabase.")
         : NpgsqlDataSource.Create(connectionString));
 
-// Auth services — scheme is configured by the auth unit (ADR-005).
-// AddAuthentication() registers the middleware services so UseAuthentication() works.
-builder.Services.AddAuthentication();
+// Supabase JWT Bearer authentication.
+// Set Supabase__Url in .env.local (e.g. Supabase__Url=https://abcdef.supabase.co).
+// If the URL is absent (e.g. in unit-test boots), authority is skipped and tests
+// override the default scheme with FakeAuthHandler via WithWebHostBuilder.
+var supabaseUrl = builder.Configuration["Supabase:Url"];
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        if (supabaseUrl is null) return; // no-op when URL is absent; tests provide their own scheme
+
+        // Supabase exposes an OIDC discovery document at {url}/auth/v1/.well-known/openid-configuration
+        options.Authority             = $"{supabaseUrl}/auth/v1";
+        options.Audience              = "authenticated";
+        options.RequireHttpsMetadata  = !builder.Environment.IsDevelopment();
+    });
+
 builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
