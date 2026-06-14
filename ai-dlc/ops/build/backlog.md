@@ -27,6 +27,7 @@ Bolt: [BOLT-001](bolts/2026-06-12-bolt-001-cabin-search.md) — Planned
 
 Intent: [2026-06-14-booking-flow.md](../inception/intents/2026-06-14-booking-flow.md)
 Elaboration: [2026-06-14-session-1.md](../inception/elaborations/booking-flow/2026-06-14-session-1.md)
+Bolt: [BOLT-002](bolts/2026-06-14-bolt-002-booking-flow.md) — Planned
 
 | ID | Unit | Layer | Priority | Status |
 |---|---|---|---|---|
