@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using CabinConnect.Domain.Cabins;
 using CabinConnect.Domain.Search;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,15 +21,14 @@ public class CabinsControllerTests : IClassFixture<WebApplicationFactory<Program
     private HttpClient BuildClient(ICabinSearchRepository? repo = null)
     {
         repo ??= Substitute.For<ICabinSearchRepository>();
-        repo.GetPublishedCabinsWithAvailabilityDataAsync(
-                Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([]);
+        repo.SearchAvailablePageAsync(
+                Arg.Any<CabinSearchQuery>(), Arg.Any<CancellationToken>())
+            .Returns((Array.Empty<Cabin>(), 0));
 
         return _factory.WithWebHostBuilder(b =>
             b.ConfigureServices(services =>
-            {
-                services.AddScoped<ICabinSearchRepository>(_ => repo);
-            })).CreateClient();
+                services.AddScoped<ICabinSearchRepository>(_ => repo)))
+            .CreateClient();
     }
 
     // AC-7: checkOut before checkIn returns 400 INVALID_DATE_RANGE

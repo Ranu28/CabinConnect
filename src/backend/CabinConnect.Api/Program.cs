@@ -18,14 +18,16 @@ var builder = WebApplication.CreateBuilder(args);
 // NpgsqlDataSource is the recommended way to create Npgsql connections.
 // Connection string is read from configuration (appsettings / env vars / user-secrets).
 // Never hardcode the connection string here — use environment variables in production.
-var connectionString = builder.Configuration.GetConnectionString("Supabase")
-    ?? throw new InvalidOperationException(
-        "Connection string 'Supabase' is missing. " +
-        "Add it to appsettings.Development.json or as an environment variable " +
-        "ConnectionStrings__Supabase.");
-
-builder.Services.AddSingleton(
-    NpgsqlDataSource.Create(connectionString));
+// Defer validation to resolution time so WebApplicationFactory can boot without
+// a real connection string (the repository is mocked in integration tests).
+var connectionString = builder.Configuration.GetConnectionString("Supabase");
+builder.Services.AddSingleton(_ =>
+    connectionString is null
+        ? throw new InvalidOperationException(
+            "Connection string 'Supabase' is missing. " +
+            "Add it to appsettings.Development.json or as an environment variable " +
+            "ConnectionStrings__Supabase.")
+        : NpgsqlDataSource.Create(connectionString));
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

@@ -1,4 +1,3 @@
-using CabinConnect.Domain.Bookings;
 using CabinConnect.Domain.Cabins;
 using CabinConnect.Domain.Rates;
 using CabinConnect.Domain.Search;
@@ -7,287 +6,149 @@ using NSubstitute;
 
 namespace CabinConnect.Domain.Tests.Search;
 
+// Availability filtering (AC-1, AC-2, AC-4, AC-5, AC-11), sorting (AC-6), and
+// pagination (AC-12, AC-13) are now enforced by the SQL in CabinSearchRepository.
+// Service tests cover what the service itself does: price calculation (AC-3),
+// breakdown construction, and result mapping from the repository page.
+
 public class CabinSearchServiceTests
 {
-    private static readonly DateOnly CheckIn = new(2026, 7, 1);
+    private static readonly DateOnly CheckIn  = new(2026, 7, 1);
     private static readonly DateOnly CheckOut = new(2026, 7, 5); // 4 nights
 
     private static Cabin MakeCabin(
         decimal baseRate = 100m,
         int maxGuests = 4,
         string[]? amenities = null,
-        bool isPublished = true) => new()
+        IReadOnlyList<SeasonalRate>? seasonalRates = null) => new()
     {
-        Id = Guid.NewGuid(),
-        Name = "Test Cabin",
-        Description = "A cabin.",
-        MaxGuests = maxGuests,
-        BaseRate = baseRate,
-        Currency = "USD",
-        Amenities = amenities ?? ["wifi", "parking"],
-        SeasonalRates = [],
-        IsPublished = isPublished
-    };
-
-    private static Booking MakeBooking(Guid cabinId, BookingStatus status) => new()
-    {
-        Id = Guid.NewGuid(),
-        CabinId = cabinId,
-        CheckIn = CheckIn,
-        CheckOut = CheckOut,
-        Status = status
-    };
-
-    private static BlackoutDate MakeBlackout(Guid cabinId) => new()
-    {
-        Id = Guid.NewGuid(),
-        CabinId = cabinId,
-        StartDate = CheckIn,
-        EndDate = CheckOut
+        Id            = Guid.NewGuid(),
+        Name          = "Test Cabin",
+        Description   = "A cabin.",
+        MaxGuests     = maxGuests,
+        BaseRate      = baseRate,
+        Currency      = "USD",
+        Amenities     = amenities ?? ["wifi", "parking"],
+        SeasonalRates = seasonalRates ?? [],
+        IsPublished   = true
     };
 
     private static CabinSearchService BuildService(
-        IReadOnlyList<CabinWithAvailabilityData> repoData)
+        IReadOnlyList<Cabin> page, int totalCount = -1)
     {
+        if (totalCount < 0) totalCount = page.Count;
         var repo = Substitute.For<ICabinSearchRepository>();
-        repo.GetPublishedCabinsWithAvailabilityDataAsync(
-                Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns(repoData);
+        repo.SearchAvailablePageAsync(Arg.Any<CabinSearchQuery>(), Arg.Any<CancellationToken>())
+            .Returns((page, totalCount));
         return new CabinSearchService(repo);
     }
 
-    private static CabinSearchQuery DefaultQuery() =>
-        new(CheckIn, CheckOut);
+    private static CabinSearchQuery DefaultQuery() => new(CheckIn, CheckOut);
 
-    // AC-1: confirmed booking blocks cabin
-    [Fact]
-    public async Task SearchAsync_CabinHasConfirmedBooking_ExcludesCabin()
-    {
-        var cabin = MakeCabin();
-        var data = new[]
-        {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin,
-                OverlappingBookings = [MakeBooking(cabin.Id, BookingStatus.Confirmed)],
-                OverlappingBlackouts = []
-            }
-        };
-
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
-
-        result.Items.Should().BeEmpty();
-        result.TotalCount.Should().Be(0);
-    }
-
-    // AC-1: pending booking also blocks cabin
-    [Fact]
-    public async Task SearchAsync_CabinHasPendingBooking_ExcludesCabin()
-    {
-        var cabin = MakeCabin();
-        var data = new[]
-        {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin,
-                OverlappingBookings = [MakeBooking(cabin.Id, BookingStatus.Pending)],
-                OverlappingBlackouts = []
-            }
-        };
-
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
-
-        result.Items.Should().BeEmpty();
-    }
-
-    // AC-1: cancelled booking does NOT block cabin
-    [Fact]
-    public async Task SearchAsync_CabinHasOnlyCancelledBooking_IncludesCabin()
-    {
-        var cabin = MakeCabin();
-        var data = new[]
-        {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin,
-                OverlappingBookings = [MakeBooking(cabin.Id, BookingStatus.Cancelled)],
-                OverlappingBlackouts = []
-            }
-        };
-
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
-
-        result.Items.Should().HaveCount(1);
-    }
-
-    // AC-2: blackout date blocks cabin (EC-004)
-    [Fact]
-    public async Task SearchAsync_CabinHasBlackoutDate_ExcludesCabin()
-    {
-        var cabin = MakeCabin();
-        var data = new[]
-        {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin,
-                OverlappingBookings = [],
-                OverlappingBlackouts = [MakeBlackout(cabin.Id)]
-            }
-        };
-
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
-
-        result.Items.Should().BeEmpty();
-    }
-
-    // AC-3: available cabin appears with price breakdown
+    // AC-3: available cabin appears with correct price breakdown
     [Fact]
     public async Task SearchAsync_AvailableCabin_ReturnsWithPriceBreakdown()
     {
         var cabin = MakeCabin(baseRate: 100m);
-        var data = new[]
-        {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin, OverlappingBookings = [], OverlappingBlackouts = []
-            }
-        };
-
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
+        var result = await BuildService([cabin]).SearchAsync(DefaultQuery());
 
         result.Items.Should().HaveCount(1);
         var item = result.Items[0];
-        item.TotalPrice.Should().Be(400m); // 4 nights × $100
+        item.TotalPrice.Should().Be(400m);                        // 4 nights × $100
         item.PriceBreakdown.Should().HaveCount(1);
         item.PriceBreakdown[0].RateType.Should().Be("BaseRate");
         item.PriceBreakdown[0].Nights.Should().Be(4);
         item.PriceBreakdown[0].Subtotal.Should().Be(400m);
     }
 
-    // AC-4: guest count filter
+    // AC-3 with seasonal rate: breakdown groups consecutive nights at same rate
     [Fact]
-    public async Task SearchAsync_GuestFilter_ExcludesCabinsBelowCapacity()
+    public async Task SearchAsync_CabinWithSeasonalRate_ReturnsCorrectBreakdown()
     {
-        var small = MakeCabin(maxGuests: 2);
-        var large = MakeCabin(maxGuests: 6);
-        var data = new[]
-        {
-            new CabinWithAvailabilityData { Cabin = small, OverlappingBookings = [], OverlappingBlackouts = [] },
-            new CabinWithAvailabilityData { Cabin = large, OverlappingBookings = [], OverlappingBlackouts = [] }
-        };
+        // Seasonal rate covers nights 1–2 (Jul 1–2); nights 3–4 fall back to base rate
+        var seasonal = new SeasonalRate(
+            StartDate: new DateOnly(2026, 7, 1),
+            EndDate:   new DateOnly(2026, 7, 3),  // exclusive: covers Jul 1 and Jul 2
+            Rate:      200m,
+            Name:      "Peak");
+        var cabin = MakeCabin(baseRate: 100m, seasonalRates: [seasonal]);
 
-        var query = DefaultQuery() with { Guests = 4 };
-        var result = await BuildService(data).SearchAsync(query);
+        var result = await BuildService([cabin]).SearchAsync(DefaultQuery());
 
-        result.Items.Should().HaveCount(1);
-        result.Items[0].MaxGuests.Should().Be(6);
+        var item = result.Items[0];
+        item.TotalPrice.Should().Be(600m); // 2 × $200 + 2 × $100
+        item.PriceBreakdown.Should().HaveCount(2);
+        item.PriceBreakdown[0].RateType.Should().Be("SeasonalRate");
+        item.PriceBreakdown[0].Nights.Should().Be(2);
+        item.PriceBreakdown[0].Subtotal.Should().Be(400m);
+        item.PriceBreakdown[1].RateType.Should().Be("BaseRate");
+        item.PriceBreakdown[1].Nights.Should().Be(2);
+        item.PriceBreakdown[1].Subtotal.Should().Be(200m);
     }
 
-    // AC-5: price range filter
+    // Empty repository response → empty paged result
     [Fact]
-    public async Task SearchAsync_PriceRangeFilter_ExcludesCabinsOutsideRange()
+    public async Task SearchAsync_NoResults_ReturnsEmptyPagedResult()
     {
-        var cheap = MakeCabin(baseRate: 50m);  // total = 200
-        var expensive = MakeCabin(baseRate: 300m); // total = 1200
-        var data = new[]
-        {
-            new CabinWithAvailabilityData { Cabin = cheap, OverlappingBookings = [], OverlappingBlackouts = [] },
-            new CabinWithAvailabilityData { Cabin = expensive, OverlappingBookings = [], OverlappingBlackouts = [] }
-        };
+        var result = await BuildService([]).SearchAsync(DefaultQuery());
 
-        var query = DefaultQuery() with { MinPrice = 100m, MaxPrice = 500m };
-        var result = await BuildService(data).SearchAsync(query);
-
-        result.Items.Should().HaveCount(1);
-        result.Items[0].TotalPrice.Should().Be(200m);
+        result.Items.Should().BeEmpty();
+        result.TotalCount.Should().Be(0);
     }
 
-    // AC-6: results sorted ascending by total price
+    // Service passes TotalCount and pagination metadata through from the repository
     [Fact]
-    public async Task SearchAsync_MultipleAvailableCabins_SortsByTotalPriceAscending()
+    public async Task SearchAsync_PassesThroughPaginationMetadata()
     {
-        var cabins = new[] { MakeCabin(300m), MakeCabin(100m), MakeCabin(200m) };
-        var data = cabins.Select(c => new CabinWithAvailabilityData
-        {
-            Cabin = c, OverlappingBookings = [], OverlappingBlackouts = []
-        }).ToArray();
+        var cabins = Enumerable.Range(1, 2).Select(_ => MakeCabin()).ToArray();
+        var query  = DefaultQuery() with { Page = 3, PageSize = 2 };
+        var result = await BuildService(cabins, totalCount: 10).SearchAsync(query);
 
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
+        result.Items.Should().HaveCount(2);
+        result.TotalCount.Should().Be(10);
+        result.Page.Should().Be(3);
+        result.PageSize.Should().Be(2);
+    }
+
+    // Service preserves the order returned by the repository (SQL sorts by total_price)
+    [Fact]
+    public async Task SearchAsync_PreservesRepositoryOrder()
+    {
+        var cabins = new[] { MakeCabin(100m), MakeCabin(200m), MakeCabin(300m) };
+        var result = await BuildService(cabins).SearchAsync(DefaultQuery());
 
         result.Items.Select(r => r.TotalPrice)
             .Should().BeInAscendingOrder();
     }
 
-    // AC-11: unpublished cabin excluded
+    // Result fields are mapped correctly from the Cabin domain object
     [Fact]
-    public async Task SearchAsync_UnpublishedCabin_IsExcluded()
+    public async Task SearchAsync_MapsAllResultFields()
     {
-        var cabin = MakeCabin(isPublished: false);
-        var data = new[]
+        var cabin = new Cabin
         {
-            new CabinWithAvailabilityData
-            {
-                Cabin = cabin, OverlappingBookings = [], OverlappingBlackouts = []
-            }
+            Id            = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"),
+            Name          = "Pine Cabin",
+            Description   = "Nice",
+            ImageUrl      = "https://example.com/img.jpg",
+            MaxGuests     = 6,
+            BaseRate      = 150m,
+            Currency      = "USD",
+            Amenities     = ["wifi", "fireplace"],
+            SeasonalRates = [],
+            Location      = new CabinLocation(48.5, -123.2),
+            IsPublished   = true
         };
 
-        var result = await BuildService(data).SearchAsync(DefaultQuery());
+        var result = await BuildService([cabin]).SearchAsync(DefaultQuery());
 
-        result.Items.Should().BeEmpty();
-    }
-
-    // AC-12: pagination returns correct slice
-    [Fact]
-    public async Task SearchAsync_Pagination_ReturnsCorrectPageSlice()
-    {
-        var cabins = Enumerable.Range(1, 5).Select(i => MakeCabin(baseRate: i * 10m)).ToArray();
-        var data = cabins.Select(c => new CabinWithAvailabilityData
-        {
-            Cabin = c, OverlappingBookings = [], OverlappingBlackouts = []
-        }).ToArray();
-
-        var query = DefaultQuery() with { Page = 2, PageSize = 2 };
-        var result = await BuildService(data).SearchAsync(query);
-
-        result.Items.Should().HaveCount(2);
-        result.TotalCount.Should().Be(5);
-        result.Page.Should().Be(2);
-        result.PageSize.Should().Be(2);
-    }
-
-    // AC-13: page beyond last returns empty with correct totalCount
-    [Fact]
-    public async Task SearchAsync_PageBeyondLast_ReturnsEmptyWithCorrectTotalCount()
-    {
-        var cabins = Enumerable.Range(1, 3).Select(_ => MakeCabin()).ToArray();
-        var data = cabins.Select(c => new CabinWithAvailabilityData
-        {
-            Cabin = c, OverlappingBookings = [], OverlappingBlackouts = []
-        }).ToArray();
-
-        var query = DefaultQuery() with { Page = 99, PageSize = 20 };
-        var result = await BuildService(data).SearchAsync(query);
-
-        result.Items.Should().BeEmpty();
-        result.TotalCount.Should().Be(3);
-    }
-
-    // Amenity filter — AND operation
-    [Fact]
-    public async Task SearchAsync_AmenityFilter_ExcludesCabinsMissingRequiredAmenity()
-    {
-        var withWifi = MakeCabin(amenities: ["wifi", "parking"]);
-        var withoutWifi = MakeCabin(amenities: ["parking"]);
-        var data = new[]
-        {
-            new CabinWithAvailabilityData { Cabin = withWifi, OverlappingBookings = [], OverlappingBlackouts = [] },
-            new CabinWithAvailabilityData { Cabin = withoutWifi, OverlappingBookings = [], OverlappingBlackouts = [] }
-        };
-
-        var query = DefaultQuery() with { Amenities = ["wifi"] };
-        var result = await BuildService(data).SearchAsync(query);
-
-        result.Items.Should().HaveCount(1);
-        result.Items[0].Amenities.Should().Contain("wifi");
+        var item = result.Items[0];
+        item.CabinId.Should().Be(cabin.Id);
+        item.Name.Should().Be("Pine Cabin");
+        item.MaxGuests.Should().Be(6);
+        item.Amenities.Should().Contain("wifi").And.Contain("fireplace");
+        item.Currency.Should().Be("USD");
+        item.Location.Should().NotBeNull();
+        item.Location!.Lat.Should().Be(48.5);
     }
 }
