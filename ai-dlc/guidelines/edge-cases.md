@@ -58,3 +58,15 @@ _Mitigation:_ Validated server-side before any database query. Frontend also val
 **EC-010 — Zero-night booking**
 Check-in and check-out on the same date results in a zero-night stay.
 _Mitigation:_ Minimum booking duration is 1 night. Enforce in validation with a clear error message.
+
+---
+
+## Hold Lifecycle
+
+**EC-011 — Guest places second Hold while first Hold is still Active**
+A Guest places a Hold on Cabin A, then places a Hold on Cabin B without explicitly releasing the first Hold. Without explicit handling, the Guest holds two cabins simultaneously, tying up availability for other Guests.
+_Mitigation:_ When `POST /api/holds` succeeds, the API first cancels any existing Active Hold for that Guest (`UPDATE holds SET status='Cancelled' WHERE guest_id = @GuestId AND status = 'Active'`), then creates the new Hold — both in a single transaction. The Guest always has at most one Active Hold.
+
+**EC-012 — Booking creation and Hold consumption must be atomic**
+Between checking the Hold is Active and writing the Booking record, the Hold could expire and be claimed by another request, resulting in a Booking with no valid Hold.
+_Mitigation:_ Wrap Hold validation and Booking creation in a single database transaction: `SELECT ... FOR UPDATE` on the hold row → validate `status='Active'` and `expires_at > now()` → calculate price → `INSERT INTO bookings` → `UPDATE holds SET status='Consumed'` → COMMIT. Any failure rolls back both writes.
