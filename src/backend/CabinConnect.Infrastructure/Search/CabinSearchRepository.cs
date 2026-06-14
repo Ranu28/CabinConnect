@@ -57,6 +57,14 @@ public sealed class CabinSearchRepository : ICabinSearchRepository
                              AND  bd.start_date < @CheckOut
                              AND  bd.end_date   > @CheckIn
                        )
+                  AND  NOT EXISTS (
+                           SELECT 1 FROM holds h
+                           WHERE  h.cabin_id  = c.id
+                             AND  h.check_in  < @CheckOut
+                             AND  h.check_out > @CheckIn
+                             AND  h.status    = 'Active'
+                             AND  h.expires_at > now()
+                       )
             ),
             priced AS (
                 SELECT a.*,

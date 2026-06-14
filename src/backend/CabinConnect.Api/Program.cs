@@ -1,5 +1,7 @@
+using CabinConnect.Domain.Holds;
 using CabinConnect.Domain.Search;
 using CabinConnect.Infrastructure.Common;
+using CabinConnect.Infrastructure.Holds;
 using CabinConnect.Infrastructure.Search;
 using Dapper;
 using DotNetEnv;
@@ -29,13 +31,19 @@ builder.Services.AddSingleton(_ =>
             "ConnectionStrings__Supabase.")
         : NpgsqlDataSource.Create(connectionString));
 
+// Auth services — scheme is configured by the auth unit (ADR-005).
+// AddAuthentication() registers the middleware services so UseAuthentication() works.
+builder.Services.AddAuthentication();
+builder.Services.AddAuthorization();
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddScoped<ICabinSearchRepository, CabinSearchRepository>();
 builder.Services.AddScoped<CabinSearchService>();
 
-// Auth: Supabase JWKS-based JWT validation wired up in the auth unit (ADR-005)
+builder.Services.AddScoped<IHoldRepository, HoldRepository>();
+builder.Services.AddScoped<HoldService>();
 
 var app = builder.Build();
 
@@ -45,6 +53,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
