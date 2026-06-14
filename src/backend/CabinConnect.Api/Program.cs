@@ -1,5 +1,7 @@
+using CabinConnect.Domain.Bookings;
 using CabinConnect.Domain.Holds;
 using CabinConnect.Domain.Search;
+using CabinConnect.Infrastructure.Bookings;
 using CabinConnect.Infrastructure.Common;
 using CabinConnect.Infrastructure.Holds;
 using CabinConnect.Infrastructure.Search;
@@ -44,6 +46,9 @@ builder.Services.AddScoped<CabinSearchService>();
 
 builder.Services.AddScoped<IHoldRepository, HoldRepository>();
 builder.Services.AddScoped<HoldService>();
+
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+builder.Services.AddScoped<BookingService>();
 
 var app = builder.Build();
 
