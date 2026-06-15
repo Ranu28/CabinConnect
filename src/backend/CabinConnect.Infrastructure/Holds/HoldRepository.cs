@@ -115,6 +115,13 @@ public sealed class HoldRepository : IHoldRepository
         }
     }
 
+    public async Task<int> CancelExpiredHoldsAsync(CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        return await conn.ExecuteAsync(
+            "UPDATE holds SET status = 'Cancelled' WHERE status = 'Active' AND expires_at < now()");
+    }
+
     private sealed class HoldRow
     {
         public Guid            Id        { get; set; }

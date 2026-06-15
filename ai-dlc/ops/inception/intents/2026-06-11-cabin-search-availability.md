@@ -61,9 +61,9 @@ _None remaining — all resolved 2026-06-12. See Decisions below._
 
 | Unit | File | Status |
 |---|---|---|
-| CSA-001 Nightly Rate Breakdown Calculator | [csa-001](../../build/units/csa-001-nightly-rate-calculator.md) | Ready |
-| CSA-002 Cabin Availability Query API | [csa-002](../../build/units/csa-002-cabin-availability-query-api.md) | Ready |
-| CSA-003 Search Form Component | [csa-003](../../build/units/csa-003-search-form-component.md) | Ready |
-| CSA-004 Cabin Result Card | [csa-004](../../build/units/csa-004-cabin-result-card.md) | Ready |
-| CSA-005 Search Results List View | [csa-005](../../build/units/csa-005-search-results-list-view.md) | Ready |
+| CSA-001 Nightly Rate Breakdown Calculator | [csa-001](../../build/units/csa-001-nightly-rate-calculator.md) | Done |
+| CSA-002 Cabin Availability Query API | [csa-002](../../build/units/csa-002-cabin-availability-query-api.md) | Done |
+| CSA-003 Search Form Component | [csa-003](../../build/units/csa-003-search-form-component.md) | Done |
+| CSA-004 Cabin Result Card | [csa-004](../../build/units/csa-004-cabin-result-card.md) | Done |
+| CSA-005 Search Results List View | [csa-005](../../build/units/csa-005-search-results-list-view.md) | Done |
 | CSA-006 Map View (Optional Toggle) | [csa-006](../../build/units/csa-006-map-view.md) | Ready |

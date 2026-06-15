@@ -187,10 +187,110 @@ public class BookingsControllerTests : IClassFixture<WebApplicationFactory<Progr
         body!.Error!.Code.Should().Be("NOT_FOUND");
     }
 
+    // --- BKF-003: Cancel Booking ---
+
+    private static readonly Guid SomeBookingId = Guid.Parse("cccccccc-0000-0000-0000-000000000001");
+
+    // AC-1: cancel Confirmed booking returns 200 with bookingId + status=Cancelled
+    [Fact]
+    public async Task CancelBooking_ConfirmedBooking_Returns200()
+    {
+        var repo = Substitute.For<IBookingRepository>();
+        repo.CancelBookingAsync(SomeBookingId, Guid.Parse(FakeAuthHandler.GuestId), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var client = BuildClient(repo);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/bookings/{SomeBookingId}/cancel")
+        {
+            Headers = { { FakeAuthHandler.AuthHeader, "true" } }
+        };
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CancelEnvelope>();
+        body!.Data!.BookingId.Should().Be(SomeBookingId);
+        body.Data.Status.Should().Be("Cancelled");
+    }
+
+    // AC-5: already-Cancelled booking returns 200 (idempotent)
+    [Fact]
+    public async Task CancelBooking_AlreadyCancelled_Returns200Idempotent()
+    {
+        var repo = Substitute.For<IBookingRepository>();
+        repo.CancelBookingAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask); // repository is idempotent — returns without error
+
+        var client = BuildClient(repo);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/bookings/{SomeBookingId}/cancel")
+        {
+            Headers = { { FakeAuthHandler.AuthHeader, "true" } }
+        };
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // AC-3/AC-4: Completed or NoShow returns 409 CANNOT_CANCEL
+    [Fact]
+    public async Task CancelBooking_TerminalStatus_Returns409CannotCancel()
+    {
+        var repo = Substitute.For<IBookingRepository>();
+        repo.CancelBookingAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new BookingCannotBeCancelledException(BookingStatus.Completed));
+
+        var client = BuildClient(repo);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/bookings/{SomeBookingId}/cancel")
+        {
+            Headers = { { FakeAuthHandler.AuthHeader, "true" } }
+        };
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadFromJsonAsync<ErrorEnvelope>();
+        body!.Error!.Code.Should().Be("CANNOT_CANCEL");
+    }
+
+    // AC-6/AC-8: not found or not owned returns 404 (EC-007 — no info leak)
+    [Fact]
+    public async Task CancelBooking_NotFoundOrNotOwned_Returns404()
+    {
+        var repo = Substitute.For<IBookingRepository>();
+        repo.CancelBookingAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new BookingNotFoundException(SomeBookingId));
+
+        var client = BuildClient(repo);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/bookings/{SomeBookingId}/cancel")
+        {
+            Headers = { { FakeAuthHandler.AuthHeader, "true" } }
+        };
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var body = await response.Content.ReadFromJsonAsync<ErrorEnvelope>();
+        body!.Error!.Code.Should().Be("NOT_FOUND");
+    }
+
+    // AC-7: unauthenticated request returns 401
+    [Fact]
+    public async Task CancelBooking_NoAuth_Returns401()
+    {
+        var client = BuildClient();
+
+        var response = await client.PostAsync($"/api/bookings/{SomeBookingId}/cancel", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     // Helpers for deserialising responses
     private sealed record ConfirmEnvelope(BookingData? Data, object? Error);
     private sealed record BookingData(Guid BookingId, Guid CabinId, string CheckIn, string CheckOut,
         decimal TotalPrice, string Currency, string Status);
+    private sealed record CancelEnvelope(CancelData? Data, object? Error);
+    private sealed record CancelData(Guid BookingId, string Status);
     private sealed record ErrorEnvelope(object? Data, ErrorBody? Error);
     private sealed record ErrorBody(string Code, string Message);
 }

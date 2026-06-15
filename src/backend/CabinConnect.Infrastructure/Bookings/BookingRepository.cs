@@ -1,4 +1,5 @@
 using CabinConnect.Domain.Bookings;
+using CabinConnect.Domain.Common;
 using CabinConnect.Domain.Holds;
 using CabinConnect.Domain.Rates;
 using Dapper;
@@ -125,6 +126,170 @@ public sealed class BookingRepository : IBookingRepository
             await tx.RollbackAsync(ct);
             throw;
         }
+    }
+
+    public async Task CancelBookingAsync(Guid bookingId, Guid guestId, CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        // Include guest_id in the filter so a booking owned by another Guest returns null —
+        // the caller gets 404 for both "not found" and "not owned", preventing info leaks (EC-007).
+        var row = await conn.QuerySingleOrDefaultAsync<BookingStatusRow>(
+            "SELECT id AS Id, status AS Status FROM bookings WHERE id = @BookingId AND guest_id = @GuestId",
+            new { BookingId = bookingId, GuestId = guestId });
+
+        // AC-6/AC-8: null means not found OR not owned — both surface as 404 (EC-007).
+        if (row is null)
+            throw new BookingNotFoundException(bookingId);
+
+        var status = Enum.Parse<BookingStatus>(row.Status);
+
+        // AC-5: already Cancelled — idempotent, no update needed.
+        if (status == BookingStatus.Cancelled)
+            return;
+
+        // AC-3/AC-4: terminal states cannot be cancelled.
+        if (status is BookingStatus.Completed or BookingStatus.NoShow)
+            throw new BookingCannotBeCancelledException(status);
+
+        // AC-1/AC-2: cancel Confirmed or Pending booking.
+        await conn.ExecuteAsync(
+            "UPDATE bookings SET status = 'Cancelled', updated_at = now() WHERE id = @BookingId",
+            new { BookingId = bookingId });
+    }
+
+    public async Task<PagedResult<GuestBookingItem>> GetGuestBookingsAsync(
+        Guid guestId, int page, int pageSize, CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var rows = (await conn.QueryAsync<BookingListRow>(
+            """
+            SELECT b.id           AS BookingId,
+                   b.cabin_id     AS CabinId,
+                   c.name         AS CabinName,
+                   b.check_in     AS CheckIn,
+                   b.check_out    AS CheckOut,
+                   b.total_price  AS TotalPrice,
+                   b.currency     AS Currency,
+                   b.status       AS Status,
+                   COUNT(*) OVER() AS TotalCount
+            FROM   bookings b
+            JOIN   cabins   c ON c.id = b.cabin_id
+            WHERE  b.guest_id = @GuestId
+            ORDER  BY b.check_in DESC
+            LIMIT  @PageSize OFFSET ((@Page - 1) * @PageSize)
+            """,
+            new { GuestId = guestId, Page = page, PageSize = pageSize })).AsList();
+
+        var totalCount = rows.Count > 0 ? rows[0].TotalCount : 0;
+        var items = rows.Select(ToItem).ToList();
+        return new PagedResult<GuestBookingItem>(items, page, pageSize, totalCount);
+    }
+
+    public async Task<GuestBookingItem?> GetGuestBookingByIdAsync(
+        Guid bookingId, Guid guestId, CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var row = await conn.QuerySingleOrDefaultAsync<BookingListRow>(
+            """
+            SELECT b.id          AS BookingId,
+                   b.cabin_id    AS CabinId,
+                   c.name        AS CabinName,
+                   b.check_in    AS CheckIn,
+                   b.check_out   AS CheckOut,
+                   b.total_price AS TotalPrice,
+                   b.currency    AS Currency,
+                   b.status      AS Status,
+                   0             AS TotalCount
+            FROM   bookings b
+            JOIN   cabins   c ON c.id = b.cabin_id
+            WHERE  b.id = @BookingId AND b.guest_id = @GuestId
+            """,
+            new { BookingId = bookingId, GuestId = guestId });
+
+        return row is null ? null : ToItem(row);
+    }
+
+    public async Task<PagedResult<HostBookingItem>> GetHostBookingsAsync(
+        Guid hostId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        // AC-2: optional status filter; null means all statuses.
+        // AC-3: JOIN cabins ON host_id = @HostId restricts to this Host's cabins only.
+        var rows = (await conn.QueryAsync<HostBookingListRow>(
+            """
+            SELECT b.id           AS BookingId,
+                   b.cabin_id     AS CabinId,
+                   c.name         AS CabinName,
+                   b.guest_id     AS GuestId,
+                   b.check_in     AS CheckIn,
+                   b.check_out    AS CheckOut,
+                   b.total_price  AS TotalPrice,
+                   b.currency     AS Currency,
+                   b.status       AS Status,
+                   COUNT(*) OVER() AS TotalCount
+            FROM   bookings b
+            JOIN   cabins   c ON c.id = b.cabin_id AND c.host_id = @HostId
+            WHERE  (@Status IS NULL OR b.status = @Status)
+            ORDER  BY b.check_in DESC
+            LIMIT  @PageSize OFFSET ((@Page - 1) * @PageSize)
+            """,
+            new
+            {
+                HostId   = hostId,
+                Status   = status?.ToString(),
+                Page     = page,
+                PageSize = pageSize
+            })).AsList();
+
+        var totalCount = rows.Count > 0 ? rows[0].TotalCount : 0;
+        var items = rows.Select(r => new HostBookingItem(
+            r.BookingId, r.CabinId, r.CabinName, r.GuestId,
+            r.CheckIn, r.CheckOut, r.TotalPrice, r.Currency,
+            Enum.Parse<BookingStatus>(r.Status, ignoreCase: true))).ToList();
+
+        return new PagedResult<HostBookingItem>(items, page, pageSize, totalCount);
+    }
+
+    private sealed class HostBookingListRow
+    {
+        public Guid     BookingId  { get; set; }
+        public Guid     CabinId    { get; set; }
+        public string   CabinName  { get; set; } = "";
+        public Guid     GuestId    { get; set; }
+        public DateOnly CheckIn    { get; set; }
+        public DateOnly CheckOut   { get; set; }
+        public decimal  TotalPrice { get; set; }
+        public string   Currency   { get; set; } = "";
+        public string   Status     { get; set; } = "";
+        public int      TotalCount { get; set; }
+    }
+
+    private static GuestBookingItem ToItem(BookingListRow r) =>
+        new(r.BookingId, r.CabinId, r.CabinName,
+            r.CheckIn, r.CheckOut, r.TotalPrice, r.Currency,
+            Enum.Parse<BookingStatus>(r.Status, ignoreCase: true));
+
+    private sealed class BookingListRow
+    {
+        public Guid     BookingId  { get; set; }
+        public Guid     CabinId    { get; set; }
+        public string   CabinName  { get; set; } = "";
+        public DateOnly CheckIn    { get; set; }
+        public DateOnly CheckOut   { get; set; }
+        public decimal  TotalPrice { get; set; }
+        public string   Currency   { get; set; } = "";
+        public string   Status     { get; set; } = "";
+        public int      TotalCount { get; set; }
+    }
+
+    private sealed class BookingStatusRow
+    {
+        public Guid   Id     { get; set; }
+        public string Status { get; set; } = "";
     }
 
     private sealed class HoldWithCabinRow

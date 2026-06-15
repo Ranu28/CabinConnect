@@ -98,4 +98,46 @@ public class BookingServiceTests
         await service.Invoking(s => s.ConfirmHoldAsync(HoldId, GuestId))
             .Should().ThrowAsync<HoldNotFoundException>();
     }
+
+    // --- BKF-003 Cancel Booking ---
+
+    private static readonly Guid BookingId = Guid.NewGuid();
+
+    // AC-1/AC-2: cancel delegates to repository and completes without error
+    [Fact]
+    public async Task CancelBookingAsync_ValidBooking_DelegatesToRepository()
+    {
+        var (service, repo) = Build();
+        repo.CancelBookingAsync(BookingId, GuestId, Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await service.Invoking(s => s.CancelBookingAsync(BookingId, GuestId))
+            .Should().NotThrowAsync();
+
+        await repo.Received(1).CancelBookingAsync(BookingId, GuestId, Arg.Any<CancellationToken>());
+    }
+
+    // AC-6/AC-8: BookingNotFoundException propagates (covers not-found and not-owned, EC-007)
+    [Fact]
+    public async Task CancelBookingAsync_NotFound_ThrowsBookingNotFoundException()
+    {
+        var (service, repo) = Build();
+        repo.CancelBookingAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new BookingNotFoundException(BookingId));
+
+        await service.Invoking(s => s.CancelBookingAsync(BookingId, GuestId))
+            .Should().ThrowAsync<BookingNotFoundException>();
+    }
+
+    // AC-3/AC-4: BookingCannotBeCancelledException propagates (Completed or NoShow)
+    [Fact]
+    public async Task CancelBookingAsync_TerminalStatus_ThrowsCannotBeCancelledException()
+    {
+        var (service, repo) = Build();
+        repo.CancelBookingAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new BookingCannotBeCancelledException(BookingStatus.Completed));
+
+        await service.Invoking(s => s.CancelBookingAsync(BookingId, GuestId))
+            .Should().ThrowAsync<BookingCannotBeCancelledException>();
+    }
 }

@@ -12,6 +12,9 @@ public sealed class CabinSearchService
         _repository = repository;
     }
 
+    public Task<Cabins.Cabin?> GetCabinByIdAsync(Guid cabinId, CancellationToken ct = default)
+        => _repository.GetCabinByIdAsync(cabinId, ct);
+
     public async Task<PagedResult<CabinSearchResult>> SearchAsync(
         CabinSearchQuery query, CancellationToken ct = default)
     {

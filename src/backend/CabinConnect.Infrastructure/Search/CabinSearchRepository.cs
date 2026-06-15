@@ -147,6 +147,45 @@ public sealed class CabinSearchRepository : ICabinSearchRepository
         return ([], totalCount);
     }
 
+    public async Task<Cabin?> GetCabinByIdAsync(Guid cabinId, CancellationToken ct = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var row = await conn.QuerySingleOrDefaultAsync<CabinPageRow>(
+            """
+            SELECT id, name, description, image_url AS ImageUrl, max_guests AS MaxGuests,
+                   base_rate AS BaseRate, currency, amenities, location_lat AS LocationLat, location_lng AS LocationLng
+            FROM   cabins
+            WHERE  id = @CabinId AND is_published = true
+            """, new { CabinId = cabinId });
+
+        if (row is null) return null;
+
+        var rates = await conn.QueryAsync<SeasonalRateRow>(
+            """
+            SELECT cabin_id AS CabinId, name AS Name, start_date AS StartDate, end_date AS EndDate, rate AS Rate
+            FROM   seasonal_rates
+            WHERE  cabin_id = @CabinId
+            """, new { CabinId = cabinId });
+
+        return new Cabin
+        {
+            Id            = row.Id,
+            Name          = row.Name,
+            Description   = row.Description,
+            ImageUrl      = row.ImageUrl,
+            MaxGuests     = row.MaxGuests,
+            BaseRate      = row.BaseRate,
+            Currency      = row.Currency,
+            Amenities     = row.Amenities ?? [],
+            Location      = row.LocationLat.HasValue && row.LocationLng.HasValue
+                                ? new CabinLocation(row.LocationLat.Value, row.LocationLng.Value)
+                                : null,
+            SeasonalRates = rates.Select(r => new SeasonalRate(r.StartDate, r.EndDate, r.Rate, r.Name)).ToList(),
+            IsPublished   = true
+        };
+    }
+
     private static async Task<IEnumerable<SeasonalRateRow>> FetchRatesAsync(
         System.Data.IDbConnection conn, List<CabinPageRow> pageRows)
     {

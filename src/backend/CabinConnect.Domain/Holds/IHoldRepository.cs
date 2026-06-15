@@ -9,4 +9,10 @@ public interface IHoldRepository
     Task<Hold> PlaceHoldAsync(
         Guid cabinId, Guid guestId, DateOnly checkIn, DateOnly checkOut,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Cancels all Active holds whose expiresAt has passed.
+    /// Returns the number of holds cancelled.
+    /// </summary>
+    Task<int> CancelExpiredHoldsAsync(CancellationToken ct = default);
 }

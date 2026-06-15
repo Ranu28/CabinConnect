@@ -1,7 +1,7 @@
 # Bolt: Booking Flow — Hold to Confirmed Booking
 
 **ID:** BOLT-002
-**Status:** Planned
+**Status:** Done
 **Dates:** 2026-06-14 → 2026-06-28 (planned)
 **Driver:** RP
 **Intent(s):** [Booking Flow](../../inception/intents/2026-06-14-booking-flow.md)
@@ -91,7 +91,7 @@ BKF-001 ─────────────┤──→ BKF-004             
 ---
 
 ## Outcome
-<!-- Filled in at bolt close. -->
-**Completed:** —
-**Units done:** — of 9
-**Retro:** —
+
+**Completed:** 2026-06-15
+**Units done:** 9 of 9 (all 8 core + stretch BKF-009)
+**Retro:** [2026-06-15-bolt-002-retro.md](../../operate/retros/2026-06-15-bolt-002-retro.md)

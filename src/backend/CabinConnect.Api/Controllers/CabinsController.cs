@@ -16,6 +16,34 @@ public sealed class CabinsController : ControllerBase
         _searchService = searchService;
     }
 
+    // BKF-005: public endpoint for cabin detail page
+    [HttpGet("{id:guid}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetCabin(Guid id, CancellationToken ct)
+    {
+        var cabin = await _searchService.GetCabinByIdAsync(id, ct);
+        if (cabin is null)
+            return NotFound(ApiResponse<object>.Failure(
+                new ApiError("NOT_FOUND", "Cabin not found.")));
+
+        return Ok(ApiResponse<object>.Success(new
+        {
+            cabinId     = cabin.Id,
+            name        = cabin.Name,
+            description = cabin.Description,
+            imageUrl    = cabin.ImageUrl,
+            maxGuests   = cabin.MaxGuests,
+            amenities   = cabin.Amenities,
+            baseRate    = cabin.BaseRate,
+            currency    = cabin.Currency,
+            location    = cabin.Location is null ? null : new
+            {
+                lat = cabin.Location.Lat,
+                lng = cabin.Location.Lng
+            }
+        }));
+    }
+
     // AC-10: public — no auth required
     [HttpGet("search")]
     [AllowAnonymous]

@@ -1,10 +1,12 @@
 using CabinConnect.Domain.Bookings;
 using CabinConnect.Domain.Holds;
 using CabinConnect.Domain.Search;
+using CabinConnect.Domain.Users;
 using CabinConnect.Infrastructure.Bookings;
 using CabinConnect.Infrastructure.Common;
 using CabinConnect.Infrastructure.Holds;
 using CabinConnect.Infrastructure.Search;
+using CabinConnect.Infrastructure.Users;
 using Dapper;
 using DotNetEnv;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -64,6 +66,10 @@ builder.Services.AddScoped<HoldService>();
 
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<BookingService>();
+
+builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
+
+builder.Services.AddHostedService<HoldExpiryService>();
 
 var app = builder.Build();
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CabinResultCard } from './cabin-result-card'
 import { SearchForm } from './search-form'
 import { buildQueryString, useCabinSearch } from './use-cabin-search'
@@ -9,6 +9,7 @@ const RESULTS_REGION_ID = 'search-results-region'
 
 export function SearchResultsView() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { status, results, totalCount, pageSize, error, search } = useCabinSearch()
   const currentParamsRef = useRef<SearchParams | null>(null)
   const currentPageRef = useRef(1)
@@ -83,9 +84,12 @@ export function SearchResultsView() {
               <li key={r.cabinId}>
                 <CabinResultCard
                   result={r}
-                  onSelect={() => {
-                    /* navigation to cabin detail wired up in the detail unit */
-                  }}
+                  onSelect={cabinId => navigate(`/cabins/${cabinId}`, {
+                    state: {
+                      checkIn:  currentParamsRef.current?.checkIn,
+                      checkOut: currentParamsRef.current?.checkOut,
+                    },
+                  })}
                 />
               </li>
             ))}
