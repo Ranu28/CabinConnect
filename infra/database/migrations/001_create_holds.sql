@@ -26,16 +26,19 @@ create index if not exists idx_holds_guest
 alter table holds enable row level security;
 
 -- Guests can only read their own Holds.
+drop policy if exists "holds_guest_select" on holds;
 create policy "holds_guest_select"
     on holds for select
     using (auth.uid() = guest_id);
 
 -- Guests can only insert Holds they own.
+drop policy if exists "holds_guest_insert" on holds;
 create policy "holds_guest_insert"
     on holds for insert
     with check (auth.uid() = guest_id);
 
 -- Guests can only update their own Holds (needed for cancel via API).
+drop policy if exists "holds_guest_update" on holds;
 create policy "holds_guest_update"
     on holds for update
     using (auth.uid() = guest_id);

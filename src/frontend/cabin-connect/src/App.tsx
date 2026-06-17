@@ -14,11 +14,7 @@ function App() {
     <>
       <NavBar />
       <Routes>
-        <Route path="/" element={
-          <main style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1rem' }}>
-            <SearchResultsView />
-          </main>
-        } />
+        <Route path="/"                   element={<SearchResultsView />} />
         <Route path="/login"              element={<LoginPage />} />
         <Route path="/register"           element={<RegisterPage />} />
         <Route path="/cabins/:id"         element={<CabinDetailPage />} />

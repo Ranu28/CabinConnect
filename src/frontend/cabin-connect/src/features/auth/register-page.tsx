@@ -19,7 +19,6 @@ export function RegisterPage() {
     setInfo(null)
     setLoading(true)
 
-    // Step 1: create Supabase Auth user
     const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
     if (signUpError) {
       setError(signUpError.message)
@@ -27,14 +26,12 @@ export function RegisterPage() {
       return
     }
 
-    // Supabase may require email confirmation before a session is returned.
     if (!data.session) {
       setInfo('Check your email to confirm your account, then sign in.')
       setLoading(false)
       return
     }
 
-    // Step 2: create the profile via the API (uses the session token from sign-up).
     const res = await apiFetch('/api/me/profile', {
       method: 'POST',
       body: JSON.stringify({ displayName: displayName.trim(), role }),
@@ -52,86 +49,99 @@ export function RegisterPage() {
   }
 
   return (
-    <main style={{ maxWidth: 440, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1>Create your CabinConnect account</h1>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="displayName">Display name</label>
-          <input
-            id="displayName"
-            type="text"
-            value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
-            required
-            minLength={1}
-            maxLength={100}
-            autoComplete="name"
-            style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
-          />
-        </div>
+    <div className="auth-page">
+      <div className="auth-card" style={{ maxWidth: 460 }}>
+        <Link to="/" className="auth-logo">CabinConnect</Link>
 
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
-          />
-        </div>
+        <h2 style={{ textAlign: 'center', marginBottom: '1.5rem' }}>Create your account</h2>
 
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            minLength={8}
-            autoComplete="new-password"
-            style={{ display: 'block', width: '100%', marginTop: '0.25rem' }}
-          />
-        </div>
-
-        <fieldset style={{ marginBottom: '1.25rem', border: '1px solid #ccc', padding: '0.75rem 1rem' }}>
-          <legend>I want to…</legend>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label htmlFor="displayName">Display name</label>
             <input
-              type="radio"
-              name="role"
-              value="guest"
-              checked={role === 'guest'}
-              onChange={() => setRole('guest')}
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              required
+              minLength={1}
+              maxLength={100}
+              autoComplete="name"
+              placeholder="Jane Smith"
             />
-            Book cabins as a Guest
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="email">Email</label>
             <input
-              type="radio"
-              name="role"
-              value="host"
-              checked={role === 'host'}
-              onChange={() => setRole('host')}
+              id="email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
             />
-            List and manage cabins as a Host
-          </label>
-        </fieldset>
+          </div>
 
-        {error && <p role="alert" style={{ color: '#c00' }}>{error}</p>}
-        {info  && <p role="status" style={{ color: '#060' }}>{info}</p>}
+          <div className="form-field">
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              placeholder="Min. 8 characters"
+            />
+          </div>
 
-        <button type="submit" disabled={loading} style={{ width: '100%', padding: '0.6rem' }}>
-          {loading ? 'Creating account…' : 'Create account'}
-        </button>
-      </form>
+          <fieldset style={{ marginBottom: '1.25rem' }}>
+            <legend>I want to…</legend>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', textTransform: 'none', letterSpacing: 0, fontSize: '0.9375rem', fontWeight: 500, cursor: 'pointer', marginBottom: 0 }}>
+                <input
+                  type="radio"
+                  name="role"
+                  value="guest"
+                  checked={role === 'guest'}
+                  onChange={() => setRole('guest')}
+                />
+                Book cabins as a Guest
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', textTransform: 'none', letterSpacing: 0, fontSize: '0.9375rem', fontWeight: 500, cursor: 'pointer', marginBottom: 0 }}>
+                <input
+                  type="radio"
+                  name="role"
+                  value="host"
+                  checked={role === 'host'}
+                  onChange={() => setRole('host')}
+                />
+                List and manage cabins as a Host
+              </label>
+            </div>
+          </fieldset>
 
-      <p style={{ marginTop: '1rem', textAlign: 'center' }}>
-        Already have an account? <Link to="/login">Sign in</Link>
-      </p>
-    </main>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {info  && <p className="form-info"  role="status">{info}</p>}
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={loading}
+            style={{ width: '100%' }}
+          >
+            {loading ? 'Creating account…' : 'Create account'}
+          </button>
+        </form>
+
+        <p className="auth-footer">
+          Already have an account?{' '}
+          <Link to="/login">Sign in</Link>
+        </p>
+      </div>
+    </div>
   )
 }

@@ -92,11 +92,13 @@ alter table bookings      enable row level security;
 alter table blackout_dates enable row level security;
 
 -- cabins: any anonymous user may read published cabins (powers the search)
+drop policy if exists "cabins_public_read" on cabins;
 create policy "cabins_public_read" on cabins
     for select
     using (is_published = true);
 
 -- seasonal_rates: readable for any published cabin
+drop policy if exists "seasonal_rates_public_read" on seasonal_rates;
 create policy "seasonal_rates_public_read" on seasonal_rates
     for select
     using (
@@ -108,6 +110,7 @@ create policy "seasonal_rates_public_read" on seasonal_rates
     );
 
 -- blackout_dates: readable for any published cabin
+drop policy if exists "blackout_dates_public_read" on blackout_dates;
 create policy "blackout_dates_public_read" on blackout_dates
     for select
     using (
@@ -119,14 +122,17 @@ create policy "blackout_dates_public_read" on blackout_dates
     );
 
 -- bookings: guests can manage their own bookings only (EC-007)
+drop policy if exists "bookings_guest_select" on bookings;
 create policy "bookings_guest_select" on bookings
     for select
     using (auth.uid() = guest_id);
 
+drop policy if exists "bookings_guest_insert" on bookings;
 create policy "bookings_guest_insert" on bookings
     for insert
     with check (auth.uid() = guest_id);
 
+drop policy if exists "bookings_guest_update" on bookings;
 create policy "bookings_guest_update" on bookings
     for update
     using (auth.uid() = guest_id);

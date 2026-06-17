@@ -25,18 +25,29 @@ const STATUS_OPTIONS: Array<{ label: string; value: string }> = [
   { label: 'NoShow',    value: 'NoShow' },
 ]
 
+function statusBadgeClass(status: string): string {
+  const map: Record<string, string> = {
+    Confirmed: 'badge-confirmed',
+    Pending:   'badge-pending',
+    Cancelled: 'badge-cancelled',
+    Completed: 'badge-completed',
+    NoShow:    'badge-noshow',
+  }
+  return `badge ${map[status] ?? 'badge-cancelled'}`
+}
+
 function HostBookingsContent() {
-  const [items, setItems]         = useState<HostBookingItem[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
+  const [items, setItems]               = useState<HostBookingItem[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
 
   const loadBookings = useCallback(async (status: string) => {
     setLoading(true)
     setError(null)
     try {
-      const qs  = status ? `?status=${status}` : ''
-      const res = await apiFetch(`/api/host/bookings${qs}`)
+      const qs   = status ? `?status=${status}` : ''
+      const res  = await apiFetch(`/api/host/bookings${qs}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error?.message ?? 'Failed to load bookings')
       setItems(json.data.items as HostBookingItem[])
@@ -49,61 +60,64 @@ function HostBookingsContent() {
 
   useEffect(() => { void loadBookings(statusFilter) }, [loadBookings, statusFilter])
 
-  // AC-7: status filter dropdown
-  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setStatusFilter(e.target.value)
-  }
-
   return (
     <>
-      <div style={{ marginBottom: '1rem' }}>
-        <label htmlFor="status-filter">Filter by status: </label>
-        <select id="status-filter" value={statusFilter} onChange={handleStatusChange}>
+      <div className="filter-bar">
+        <label htmlFor="status-filter">Filter by status:</label>
+        <select
+          id="status-filter"
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+        >
           {STATUS_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
       </div>
 
-      {loading && <p role="status">Loading bookings…</p>}
-      {error   && <p role="alert" style={{ color: 'red' }}>{error}</p>}
+      {loading && <p role="status" className="text-muted">Loading bookings…</p>}
+      {error   && <p role="alert" className="form-error">{error}</p>}
 
-      {/* AC-8: empty state */}
       {!loading && !error && items.length === 0 && (
-        <p>No bookings yet.</p>
+        <p className="text-muted">No bookings yet.</p>
       )}
 
-      {/* AC-6: booking table */}
       {!loading && !error && items.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Cabin</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Check-in</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Check-out</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Guest ref</th>
-              <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Total</th>
-              <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #eee' }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(b => {
-              const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: b.currency })
-              return (
-                <tr key={b.bookingId} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '0.5rem' }}>{b.cabinName}</td>
-                  <td style={{ padding: '0.5rem' }}>{b.checkIn}</td>
-                  <td style={{ padding: '0.5rem' }}>{b.checkOut}</td>
-                  <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>{b.guestRef}</td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>{fmt.format(b.totalPrice)}</td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <span style={{ fontWeight: 'bold' }}>{b.status}</span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div className="table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Cabin</th>
+                <th>Check-in</th>
+                <th>Check-out</th>
+                <th>Guest ref</th>
+                <th className="align-right">Total</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(b => {
+                const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: b.currency })
+                return (
+                  <tr key={b.bookingId}>
+                    <td style={{ fontWeight: 600, color: 'var(--text-h)' }}>{b.cabinName}</td>
+                    <td>{b.checkIn}</td>
+                    <td>{b.checkOut}</td>
+                    <td style={{ fontFamily: 'var(--mono)', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                      {b.guestRef}
+                    </td>
+                    <td className="align-right" style={{ fontWeight: 600 }}>
+                      {fmt.format(b.totalPrice)}
+                    </td>
+                    <td>
+                      <span className={statusBadgeClass(b.status)}>{b.status}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   )
@@ -112,11 +126,13 @@ function HostBookingsContent() {
 export function HostBookingsPage() {
   return (
     <RequireAuth>
-      <main style={{ maxWidth: 1000, margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Host — Bookings</h1>
-        <Link to="/">← Back to search</Link>
+      <div className="page page--wide">
+        <div className="page-header">
+          <Link to="/" className="back-link">← Search</Link>
+          <h1>Host Bookings</h1>
+        </div>
         <HostBookingsContent />
-      </main>
+      </div>
     </RequireAuth>
   )
 }

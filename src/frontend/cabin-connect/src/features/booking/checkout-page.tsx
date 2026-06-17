@@ -11,35 +11,29 @@ function formatMMSS(totalSeconds: number): string {
 }
 
 function CheckoutContent() {
-  const [searchParams]  = useSearchParams()
-  const location        = useLocation()
-  const navigate        = useNavigate()
-  const holdId          = searchParams.get('holdId') ?? ''
+  const [searchParams] = useSearchParams()
+  const location       = useLocation()
+  const navigate       = useNavigate()
+  const holdId         = searchParams.get('holdId') ?? ''
 
-  // Load hold state from router state (fresh navigation) or sessionStorage (page refresh).
-  const stored = holdId ? sessionStorage.getItem(`hold:${holdId}`) : null
+  const stored  = holdId ? sessionStorage.getItem(`hold:${holdId}`) : null
   const initial = (location.state as HoldCheckoutState | null)
     ?? (stored ? (JSON.parse(stored) as HoldCheckoutState) : null)
 
-  const [holdState]        = useState<HoldCheckoutState | null>(initial)
+  const [holdState]    = useState<HoldCheckoutState | null>(initial)
   const [secondsLeft, setSecondsLeft] = useState<number>(() => {
     if (!initial?.expiresAt) return 0
     return Math.max(0, Math.floor((new Date(initial.expiresAt).getTime() - Date.now()) / 1000))
   })
-  const [confirming, setConfirming] = useState(false)
+  const [confirming, setConfirming]     = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
   const expired = secondsLeft <= 0
 
-  // Redirect if holdId is missing or hold data is unavailable (AC-7).
   useEffect(() => {
-    if (!holdId || !holdState) {
-      navigate('/', { replace: true })
-    }
+    if (!holdId || !holdState) navigate('/', { replace: true })
   }, [holdId, holdState, navigate])
 
-  // AC-2: count down to expiresAt in real time; does not reset on refresh because
-  // secondsLeft is initialised from the server's expiresAt, not from a fixed duration.
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
     if (!holdState?.expiresAt || expired) return
@@ -61,7 +55,6 @@ function CheckoutContent() {
       })
       const json = await res.json()
 
-      // AC-5: API returned HOLD_EXPIRED — treat same as countdown reaching zero
       if (res.status === 409 && json.error?.code === 'HOLD_EXPIRED') {
         setSecondsLeft(0)
         return
@@ -73,7 +66,6 @@ function CheckoutContent() {
 
       const booking = json.data as { bookingId: string }
 
-      // Pass booking details to the confirmation page via router state.
       const nights = Math.round(
         (new Date(holdState.checkOut).getTime() - new Date(holdState.checkIn).getTime()) / 86_400_000
       )
@@ -88,7 +80,6 @@ function CheckoutContent() {
       }
 
       sessionStorage.removeItem(`hold:${holdId}`)
-      // AC-3: navigate to booking confirmed on success
       navigate(`/booking-confirmed?bookingId=${booking.bookingId}`, { state: confirmState })
     } catch {
       setConfirmError('Network error. Please try again.')
@@ -102,39 +93,56 @@ function CheckoutContent() {
   const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: holdState.currency })
 
   return (
-    <main style={{ maxWidth: 600, margin: '2rem auto', padding: '0 1rem' }}>
-      <h1>Complete your booking</h1>
+    <div className="page" style={{ maxWidth: 560 }}>
+      <h1 style={{ marginTop: '1.5rem', marginBottom: '1.75rem' }}>Complete your booking</h1>
 
-      {/* AC-1: hold details */}
-      <section aria-label="Booking summary">
-        <h2>{holdState.cabinName}</h2>
-        <p>Check-in: <strong>{holdState.checkIn}</strong></p>
-        <p>Check-out: <strong>{holdState.checkOut}</strong></p>
-        <p>Nights: <strong>{holdState.nights}</strong></p>
-        <p>Total: <strong>{fmt.format(holdState.totalPrice)}</strong></p>
-      </section>
+      <div className="summary-card" aria-label="Booking summary">
+        <h2 style={{ marginBottom: '1rem' }}>{holdState.cabinName}</h2>
+        <div className="summary-row">
+          <span className="summary-label">Check-in</span>
+          <span className="summary-value">{holdState.checkIn}</span>
+        </div>
+        <div className="summary-row">
+          <span className="summary-label">Check-out</span>
+          <span className="summary-value">{holdState.checkOut}</span>
+        </div>
+        <div className="summary-row">
+          <span className="summary-label">Nights</span>
+          <span className="summary-value">{holdState.nights}</span>
+        </div>
+        <div className="summary-row summary-row--total">
+          <span className="summary-label">Total</span>
+          <span className="summary-value">{fmt.format(holdState.totalPrice)}</span>
+        </div>
+      </div>
 
-      {/* AC-2: countdown */}
-      <p aria-live="polite">
+      <div aria-live="polite" className={`countdown${expired ? ' countdown--urgent' : ''}`}>
         {expired
-          ? 'Your hold has expired.'
-          : `Hold expires in: ${formatMMSS(secondsLeft)}`}
-      </p>
+          ? '⏱ Hold expired'
+          : `⏱ Hold expires in ${formatMMSS(secondsLeft)}`
+        }
+      </div>
 
-      {/* AC-4: expired state */}
       {expired && (
-        <p>
-          Your hold has expired. <Link to="/">Search again</Link>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          Your hold has expired.{' '}
+          <Link to="/">Search again</Link>
         </p>
       )}
 
-      {confirmError && <p role="alert" style={{ color: 'red' }}>{confirmError}</p>}
+      {confirmError && (
+        <p role="alert" className="form-error">{confirmError}</p>
+      )}
 
-      {/* AC-4: button disabled when expired */}
-      <button onClick={handleConfirm} disabled={expired || confirming}>
+      <button
+        className="btn btn-primary btn-primary-lg"
+        onClick={handleConfirm}
+        disabled={expired || confirming}
+        style={{ width: '100%', marginTop: '0.5rem' }}
+      >
         {confirming ? 'Confirming…' : 'Confirm Booking'}
       </button>
-    </main>
+    </div>
   )
 }
 
